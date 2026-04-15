@@ -976,8 +976,10 @@ $ ========================================
     let currentPath = '{{ user_path }}';
     let selectedFiles = [];
     let networkHistory = [];
+    let commandRunning = false;
     let runningFileProcesses = {};
-    
+
+    // Terminal variables
     let currentTerminalSession = null;
     let terminalOutputInterval = null;
     let terminalPrompt = '$ ';
@@ -985,9 +987,24 @@ $ ========================================
     function getFileIcon(filename) {
         const ext = filename.split('.').pop().toLowerCase();
         const icons = {
-            'py': '🐍', 'js': '📜', 'html': '🌐', 'htm': '🌐', 'css': '🎨', 'php': '🐘',
-            'sh': '📟', 'bash': '📟', 'json': '📋', 'txt': '📄', 'md': '📝', 'sql': '🗄️',
-            'java': '☕', 'cpp': '⚙️', 'c': '⚙️', 'go': '🐹', 'rs': '🦀', 'rb': '💎'
+            'py': '🐍',
+            'js': '📜',
+            'html': '🌐',
+            'htm': '🌐',
+            'css': '🎨',
+            'php': '🐘',
+            'sh': '📟',
+            'bash': '📟',
+            'json': '📋',
+            'txt': '📄',
+            'md': '📝',
+            'sql': '🗄️',
+            'java': '☕',
+            'cpp': '⚙️',
+            'c': '⚙️',
+            'go': '🐹',
+            'rs': '🦀',
+            'rb': '💎'
         };
         return icons[ext] || '📄';
     }
@@ -1001,9 +1018,17 @@ $ ========================================
     function getRunCommand(filename) {
         const ext = filename.split('.').pop().toLowerCase();
         const commands = {
-            'py': 'python3', 'js': 'node', 'sh': 'bash', 'bash': 'bash', 'php': 'php',
-            'java': 'javac && java', 'cpp': 'g++ -o output && ./output', 'c': 'gcc -o output && ./output',
-            'go': 'go run', 'rs': 'rustc && ./output', 'rb': 'ruby'
+            'py': 'python3',
+            'js': 'node',
+            'sh': 'bash',
+            'bash': 'bash',
+            'php': 'php',
+            'java': 'javac && java',
+            'cpp': 'g++ -o output && ./output',
+            'c': 'gcc -o output && ./output',
+            'go': 'go run',
+            'rs': 'rustc && ./output',
+            'rb': 'ruby'
         };
         return commands[ext] || '';
     }
@@ -1067,6 +1092,8 @@ $ ========================================
             const data = await res.json();
             document.getElementById('cpu').innerText = data.cpu.toFixed(1) + '%';
             document.getElementById('cpuFill').style.width = Math.min(data.cpu, 100) + '%';
+            const ramGB = (data.memory.used / 1024**3).toFixed(2);
+            const ramTotalGB = (data.memory.total / 1024**3).toFixed(2);
             document.getElementById('ram').innerText = data.memory.percent.toFixed(1) + '%';
             document.getElementById('ramFill').style.width = Math.min(data.memory.percent, 100) + '%';
             document.getElementById('disk').innerText = data.disk.percent.toFixed(1) + '%';
@@ -1202,7 +1229,7 @@ $ ========================================
         window.open(`/api/files/download?path=${currentPath}/${name}`, '_blank');
     }
 
-    // Terminal functions
+    // ========== NEW TERMINAL FUNCTIONS ==========
     async function updateTerminalPrompt() {
         try {
             const res = await fetch('/api/terminal/cwd');
@@ -1290,8 +1317,8 @@ $ ========================================
     function clearTerminal() {
         document.getElementById('terminalOutput').innerText = '🔥 ˣᶜᵀ 𝒙 𝑻𝒆𝒂𝑴 UNLIMITED VPS 🔥\nResources: UNLIMITED ∞\nStatus: READY\nType \'help\' for available commands\n========================================\n' + terminalPrompt;
     }
+    // ========== END TERMINAL ==========
 
-    // Process management
     async function startProcess() {
         const name = document.getElementById('procName').value;
         let command = document.getElementById('procCommand').value;
@@ -1412,7 +1439,7 @@ $ ========================================
 
     function formatCode() {
         const editor = document.getElementById('codeEditor');
-        editor.value = editor.value.split('\n').map(l => l.trim()).join('\n');
+        editor.value = editor.value.split('\\n').map(l => l.trim()).join('\\n');
     }
 
     async function refreshSysInfo() {
@@ -1644,9 +1671,9 @@ $ ========================================
     function filterLogs() {
         const filter = document.getElementById('logFilter').value.toLowerCase();
         const logViewer = document.getElementById('logViewer');
-        const lines = logViewer.innerText.split('\n');
+        const lines = logViewer.innerText.split('\\n');
         const filtered = lines.filter(l => l.toLowerCase().includes(filter));
-        logViewer.innerText = filtered.join('\n');
+        logViewer.innerText = filtered.join('\\n');
     }
 
     async function updateRunningFiles() {
@@ -1663,22 +1690,16 @@ $ ========================================
         }
     }
 
-    // Missing helper functions
+    // Helper functions for missing features (placeholders)
     function compressFiles() { alert('Compress feature coming soon'); }
     function downloadSelected() { alert('Download selected feature coming soon'); }
     function refreshAllFolders() { /* implement if needed */ }
     function restoreBackup(name) { alert('Restore backup: ' + name); }
-    function deleteBackup(name) { 
-        if(confirm('Delete backup ' + name + '?')) {
-            // API call to delete backup
-        }
-    }
+    function deleteBackup(name) { if(confirm('Delete backup ' + name + '?')) {} }
     function uninstallPip(pkg) { alert('Uninstall pip: ' + pkg); }
-    function stopDocker(id) { 
-        // API call to stop container
-    }
+    function stopDocker(id) { alert('Stop container: ' + id); }
 
-    // Initialize
+    // Auto refresh
     setInterval(updateStats, 3000);
     setInterval(() => {
         if(document.getElementById('processes').classList.contains('active')) refreshProcesses();
