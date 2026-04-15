@@ -1,1 +1,13 @@
+# requirements.txt
+# مطلوب لتشغيل ˣᶜᵀ 𝒙 𝑻𝒆𝒂𝑴 - UNLIMITED VPS Control Panel
 
+Flask==3.0.3
+psutil==6.1.0
+
+# مكتبات إضافية موصى بها (اختيارية لكن مفيدة)
+requests==2.32.3
+cryptography==43.0.3
+
+# إذا كنت تريد إصدارات أحدث بدون تحديد رقم الإصدار (موصى به للتطوير):
+# Flask
+# psutil
