@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import os
 import sys
 import resource
@@ -27,14 +26,8 @@ from collections import deque
 
 warnings.filterwarnings('ignore')
 
-# ============================================================
-# رابط الصورة
-# ============================================================
 PROFILE_IMAGE_URL = "https://files.manuscdn.com/user_upload_by_module/session_file/310519663299109277/qXMPQJGpGmBBKCfH.png"
 
-# ============================================================
-# إعدادات الموارد غير المحدودة
-# ============================================================
 def set_unlimited_resources():
     try:
         resource.setrlimit(resource.RLIMIT_AS, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
@@ -42,7 +35,7 @@ def set_unlimited_resources():
         resource.setrlimit(resource.RLIMIT_STACK, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
         resource.setrlimit(resource.RLIMIT_NOFILE, (999999, 999999))
         resource.setrlimit(resource.RLIMIT_NPROC, (resource.RLIM_INFINITY, resource.RLIM_INFINITY))
-        print("[🔥 UNLIMITED] Resource limits removed")
+        print("[🔥 UNLIMITED] Resource limits removed - INFINITY MODE ACTIVE")
         return True
     except Exception as e:
         print(f"[⚠️ UNLIMITED] Partial mode: {e}")
@@ -55,22 +48,22 @@ def unlimited_memory_monitor():
         time.sleep(30)
         try:
             gc.collect()
+            try:
+                with open('/proc/sys/vm/drop_caches', 'w') as f:
+                    f.write('3')
+            except:
+                pass
         except:
             pass
 
 threading.Thread(target=unlimited_memory_monitor, daemon=True).start()
 
-# ============================================================
-# إعدادات Flask
-# ============================================================
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(64)
 app.permanent_session_lifetime = timedelta(days=30)
 app.config['MAX_CONTENT_LENGTH'] = None
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
-# ============================================================
-# المسارات والإعدادات الأساسية
-# ============================================================
 BASE_PATH = '/home/container'
 USERS_FOLDER = os.path.join(BASE_PATH, 'users_data')
 USERS_FILE = os.path.join(BASE_PATH, 'users.json')
@@ -84,9 +77,6 @@ PACKAGES_FILE = os.path.join(BASE_PATH, 'packages.json')
 DOCKER_FILE = os.path.join(BASE_PATH, 'docker.json')
 MASTER_CONFIG_FILE = os.path.join(BASE_PATH, 'master_config.json')
 
-# ============================================================
-# دوال مساعدة للملفات
-# ============================================================
 def init_json_file(file_path, default_data):
     if not os.path.exists(file_path):
         try:
@@ -112,9 +102,6 @@ def save_json_file(file_path, data):
     except:
         return False
 
-# ============================================================
-# تحميل إعدادات المالك
-# ============================================================
 def load_master_config():
     default_config = {
         'master_username': 'VeNoM',
@@ -125,24 +112,29 @@ def load_master_config():
         save_json_file(MASTER_CONFIG_FILE, default_config)
         return default_config
     config = load_json_file(MASTER_CONFIG_FILE)
-    return config if config else default_config
+    if not config:
+        return default_config
+    return config
 
 MASTER_CONFIG = load_master_config()
 MASTER_USERNAME = MASTER_CONFIG.get('master_username', 'VeNoM')
 MASTER_PASSWORD_HASH = MASTER_CONFIG.get('master_password_hash', hashlib.sha256('VeNoM'.encode()).hexdigest())
 
-# إنشاء المجلدات الأساسية
 for folder in [USERS_FOLDER, TEMP_FOLDER, BACKUPS_FOLDER]:
     if not os.path.exists(folder):
         os.makedirs(folder, exist_ok=True)
 
-# تهيئة جميع ملفات البيانات
 init_json_file(USERS_FILE, {})
 init_json_file(PROCESSES_FILE, {})
 init_json_file(SCHEDULES_FILE, {})
 init_json_file(USER_SESSIONS_FILE, {})
 init_json_file(PACKAGES_FILE, {'pip': [], 'apt': [], 'custom': []})
 init_json_file(DOCKER_FILE, {'containers': [], 'images': []})
+init_json_file(MASTER_CONFIG_FILE, {
+    'master_username': 'VeNoM',
+    'master_password_hash': hashlib.sha256('VeNoM'.encode()).hexdigest(),
+    'port': 3066
+})
 
 def log_activity(username, action, details=""):
     try:
@@ -242,7 +234,7 @@ def extract_and_find_main(zip_path, extract_to):
     try:
         with zipfile.ZipFile(zip_path, 'r') as z:
             z.extractall(extract_to)
-        main_files = ['main.py', 'app.py', 'bot.py', 'run.py', 'start.py']
+        main_files = ['main.py', 'app.py', 'bot.py', 'run.py', 'start.py', 'index.py']
         for root, dirs, files in os.walk(extract_to):
             for f in files:
                 if f.lower() in main_files:
@@ -260,14 +252,14 @@ def validate_python_file(filepath):
         with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read().strip()
         if not content:
-            return False, "الملف فارغ"
-        if len(content.split()) == 1 and not content.startswith(('import', 'from', 'def', 'class', '#')):
-            return False, f"الملف يحتوي على كلمة واحدة فقط: '{content}'"
+            return False, "File is empty"
+        if len(content.split()) == 1 and not content.startswith(('import', 'from', 'def', 'class', '#', 'print')):
+            return False, f"File contains only one word: '{content}'"
         try:
             ast.parse(content)
-            return True, "كود Python صالح"
+            return True, "Valid Python code"
         except SyntaxError as e:
-            return False, f"خطأ في صيغة Python: {str(e)}"
+            return False, f"Python syntax error: {str(e)}"
     except:
         return True, ""
 
@@ -280,8 +272,14 @@ def auto_install_dependencies(filepath):
             req_path = os.path.join(current_dir, 'requirements.txt')
             if os.path.exists(req_path):
                 try:
-                    subprocess.run([sys.executable, '-m', 'pip', 'install', '-r', req_path], capture_output=True, timeout=300)
-                    installed.append('requirements.txt')
+                    result = subprocess.run(
+                        [sys.executable, '-m', 'pip', 'install', '-r', req_path],
+                        capture_output=True, text=True, timeout=300
+                    )
+                    if result.returncode == 0:
+                        installed.append('requirements.txt')
+                    else:
+                        failed.append('requirements.txt')
                 except:
                     failed.append('requirements.txt')
                 break
@@ -289,37 +287,145 @@ def auto_install_dependencies(filepath):
         
         with open(filepath, 'r', encoding='utf-8', errors='ignore') as f:
             content = f.read()
+        
         packages = []
         if filepath.endswith('.py'):
-            packages = re.findall(r'^(?:import|from)\s+([a-zA-Z0-9_]+)', content, re.MULTILINE)
+            try:
+                tree = ast.parse(content)
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Import):
+                        for alias in node.names:
+                            packages.append(alias.name.split('.')[0])
+                    elif isinstance(node, ast.ImportFrom):
+                        if node.module:
+                            packages.append(node.module.split('.')[0])
+            except:
+                packages = re.findall(r'^(?:import|from)\s+([a-zA-Z0-9_]+)', content, re.MULTILINE)
         
-        package_map = {'telegram': 'python-telegram-bot', 'telebot': 'pyTelegramBotAPI', 'discord': 'discord.py', 'PIL': 'Pillow'}
+        elif filepath.endswith('.js'):
+            packages = re.findall(r'require\([\'"]([^\'"]+)[\'"]\)', content)
+            packages.extend(re.findall(r'import\s+.*?\s+from\s+[\'"]([^\'"]+)[\'"]', content))
+        
+        package_map = {
+            'telegram': 'python-telegram-bot',
+            'telebot': 'pyTelegramBotAPI',
+            'discord': 'discord.py',
+            'PIL': 'Pillow',
+            'cv2': 'opencv-python',
+            'sklearn': 'scikit-learn',
+            'flask_sqlalchemy': 'Flask-SQLAlchemy',
+            'flask_cors': 'Flask-Cors',
+            'bs4': 'beautifulsoup4',
+            'yaml': 'PyYAML',
+            'dotenv': 'python-dotenv',
+            'mysql': 'mysql-connector-python',
+            'psycopg2': 'psycopg2-binary',
+            'pymongo': 'pymongo',
+            'redis': 'redis',
+            'requests': 'requests',
+            'aiohttp': 'aiohttp',
+            'selenium': 'selenium',
+            'pandas': 'pandas',
+            'numpy': 'numpy',
+            'matplotlib': 'matplotlib',
+            'tensorflow': 'tensorflow',
+            'torch': 'torch',
+            'fastapi': 'fastapi',
+            'uvicorn': 'uvicorn',
+            'gunicorn': 'gunicorn',
+            'django': 'Django',
+            'boto3': 'boto3',
+            'paramiko': 'paramiko',
+            'docker': 'docker',
+            'pyyaml': 'PyYAML',
+            'click': 'click',
+            'rich': 'rich',
+            'tqdm': 'tqdm',
+            'python-telegram-bot': 'python-telegram-bot',
+            'telethon': 'telethon',
+            'pyrogram': 'pyrogram',
+            'discord.py': 'discord.py',
+            'youtube_dl': 'youtube-dl',
+            'yt_dlp': 'yt-dlp',
+            'spotipy': 'spotipy',
+            'tweepy': 'tweepy',
+            'praw': 'praw',
+            'wikipedia': 'wikipedia',
+            'pyautogui': 'pyautogui',
+            'keyboard': 'keyboard',
+            'opencv-python': 'opencv-python',
+            'pillow': 'Pillow',
+            'pygame': 'pygame',
+            'kivy': 'kivy',
+            'pyqt5': 'PyQt5',
+            'tkinter': 'tk',
+        }
+        
+        std_libs = ['os', 'sys', 'time', 'json', 're', 'math', 'random', 'datetime', 
+                    'threading', 'subprocess', 'collections', 'io', 'typing', 'abc',
+                    'flask', 'requests', 'psutil', 'hashlib', 'base64', 'uuid',
+                    'socket', 'platform', 'signal', 'warnings', 'gc', 'resource',
+                    'shutil', 'zipfile', 'tarfile', 'secrets', 'functools', 'itertools',
+                    'string', 'textwrap', 'pathlib', 'glob', 'tempfile', 'contextlib']
         
         for pkg in set(packages):
-            if pkg and not pkg.startswith('.') and pkg not in ['os', 'sys', 'time', 'json', 're']:
+            if pkg and not pkg.startswith('.') and pkg not in std_libs:
                 actual_pkg = package_map.get(pkg, pkg)
                 try:
-                    subprocess.run([sys.executable, '-m', 'pip', 'install', '--user', actual_pkg], capture_output=True, timeout=120)
-                    installed.append(actual_pkg)
-                except:
+                    result = subprocess.run(
+                        [sys.executable, '-m', 'pip', 'install', '--user', actual_pkg],
+                        capture_output=True, text=True, timeout=120
+                    )
+                    if result.returncode == 0:
+                        installed.append(actual_pkg)
+                        print(f"[AUTO-INSTALL] ✅ {actual_pkg}")
+                    else:
+                        failed.append(actual_pkg)
+                        print(f"[AUTO-INSTALL] ❌ {actual_pkg}")
+                except subprocess.TimeoutExpired:
                     failed.append(actual_pkg)
+                    print(f"[AUTO-INSTALL] ⏱️ Timeout: {actual_pkg}")
+                except Exception as e:
+                    failed.append(actual_pkg)
+                    print(f"[AUTO-INSTALL] ❌ Error: {actual_pkg} - {e}")
+        
         return {'installed': installed, 'failed': failed}
-    except:
-        return {'installed': installed, 'failed': failed}
+        
+    except Exception as e:
+        print(f"[AUTO-INSTALL ERROR] {e}")
+        return {'installed': installed, 'failed': failed + [str(e)]}
 
 def get_run_command(filepath):
     ext = filepath.split('.')[-1].lower()
-    commands = {'py': f'python3 -u "{filepath}"', 'js': f'node "{filepath}"', 'php': f'php "{filepath}"', 'sh': f'bash "{filepath}"'}
+    commands = {
+        'py': f'python3 -u "{filepath}"',
+        'js': f'node "{filepath}"',
+        'php': f'php "{filepath}"',
+        'sh': f'bash "{filepath}"',
+        'bash': f'bash "{filepath}"',
+        'rb': f'ruby "{filepath}"',
+        'pl': f'perl "{filepath}"',
+        'lua': f'lua "{filepath}"',
+        'go': f'go run "{filepath}"',
+        'java': f'java "{filepath}"',
+        'class': f'java "{os.path.splitext(filepath)[0]}"',
+        'jar': f'java -jar "{filepath}"',
+        'c': f'gcc "{filepath}" -o "{os.path.splitext(filepath)[0]}" && "{os.path.splitext(filepath)[0]}"',
+        'cpp': f'g++ "{filepath}" -o "{os.path.splitext(filepath)[0]}" && "{os.path.splitext(filepath)[0]}"',
+        'rs': f'rustc "{filepath}" && "{os.path.splitext(filepath)[0]}"',
+        'swift': f'swift "{filepath}"',
+        'kt': f'kotlinc -script "{filepath}"',
+        'dart': f'dart "{filepath}"',
+        'r': f'Rscript "{filepath}"',
+        'jl': f'julia "{filepath}"',
+    }
     return commands.get(ext, f'python3 -u "{filepath}"')
 
-# ============================================================
-# متغيرات العمليات المشغلة
-# ============================================================
 running_processes = {}
 file_processes = {}
 
-def read_process_output(proc_id, process):
-    output_buffer = deque(maxlen=1000)
+def read_process_output(proc_id, process, max_lines=1000):
+    output_buffer = deque(maxlen=max_lines)
     try:
         for line in iter(process.stdout.readline, ''):
             if proc_id not in file_processes:
@@ -329,9 +435,6 @@ def read_process_output(proc_id, process):
     except:
         pass
 
-# ============================================================
-# الديكوريتور
-# ============================================================
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -350,11 +453,8 @@ def master_required(f):
         return f(*args, **kwargs)
     return decorated_function
 
-# ============================================================
-# قالب HTML الرئيسي
-# ============================================================
 def get_html_template(is_master):
-    master_tabs = '''
+    master_tabs = """
             <hr>
             <li onclick="showTab('users'); toggleSidebar('mainMenu')">👑 إدارة المستخدمين</li>
             <li onclick="showTab('schedules'); toggleSidebar('mainMenu')">⏰ المهام المجدولة</li>
@@ -363,60 +463,88 @@ def get_html_template(is_master):
             <li onclick="showTab('docker'); toggleSidebar('mainMenu')">🐳 Docker</li>
             <li onclick="showTab('logs'); toggleSidebar('mainMenu')">📝 سجل النشاطات</li>
             <li onclick="showTab('masterSettings'); toggleSidebar('mainMenu')">⚙️ إعدادات المالك</li>
-    ''' if is_master else ''
+    """ if is_master else ""
     
-    master_tabs_content = '''
+    master_tabs_content = """
             <div id="users" class="tab-content">
                 <h3>➕ إضافة مستخدم</h3>
-                <input type="text" id="newUsername" placeholder="اسم المستخدم">
-                <input type="password" id="newPassword" placeholder="كلمة المرور">
+                <input type="text" id="newUsername" placeholder="اسم المستخدم" style="width:100%;">
+                <input type="password" id="newPassword" placeholder="كلمة المرور" style="width:100%;">
+                <input type="number" id="maxSessions" placeholder="الحد الأقصى للجلسات" value="999" style="width:100%;">
+                <input type="date" id="expiryDate" placeholder="تاريخ الانتهاء" style="width:100%;">
                 <button onclick="addUser()" class="success-btn">➕ إضافة</button>
-                <h3>👥 المستخدمين</h3>
+                <h3 style="margin-top:20px;">👥 المستخدمين</h3>
                 <div id="userList"></div>
             </div>
             <div id="schedules" class="tab-content">
-                <input type="text" id="cronName" placeholder="اسم المهمة">
-                <input type="text" id="cronCommand" placeholder="الأمر">
-                <input type="text" id="cronSchedule" value="*/5 * * * *">
+                <h3>⏰ إضافة مهمة مجدولة</h3>
+                <input type="text" id="cronName" placeholder="اسم المهمة" style="width:100%;">
+                <input type="text" id="cronCommand" placeholder="الأمر" style="width:100%;">
+                <input type="text" id="cronSchedule" placeholder="الجدول (*/5 * * * *)" value="*/5 * * * *" style="width:100%;">
                 <button onclick="addSchedule()" class="success-btn">➕ إضافة</button>
+                <h3 style="margin-top:20px;">📋 المهام النشطة</h3>
                 <div id="scheduleList"></div>
             </div>
             <div id="backups" class="tab-content">
-                <button onclick="createBackup()" class="success-btn">💾 إنشاء نسخة</button>
-                <button onclick="refreshBackups()">🔄 تحديث</button>
+                <h3>💾 النسخ الاحتياطي</h3>
+                <button onclick="createBackup()" class="success-btn">💾 إنشاء نسخة احتياطية</button>
+                <button onclick="refreshBackups()">🔄 تحديث القائمة</button>
+                <h3 style="margin-top:20px;">📂 النسخ المتوفرة</h3>
                 <div id="backupList"></div>
             </div>
             <div id="packages" class="tab-content">
-                <input type="text" id="pipPackage" placeholder="pip package">
+                <h3>📦 تثبيت حزم pip</h3>
+                <input type="text" id="pipPackage" placeholder="اسم الحزمة" style="width:100%;">
                 <button onclick="installPip()" class="success-btn">📥 تثبيت</button>
+                <h3 style="margin-top:20px;">📋 الحزم المثبتة</h3>
                 <div id="packageList"></div>
             </div>
             <div id="docker" class="tab-content">
-                <input type="text" id="dockerImage" placeholder="الصورة">
-                <input type="text" id="dockerName" placeholder="اسم الحاوية">
-                <button onclick="runDocker()" class="success-btn">🐳 تشغيل</button>
+                <h3>🐳 إدارة Docker</h3>
+                <input type="text" id="dockerImage" placeholder="اسم الصورة (nginx:latest)" style="width:100%;">
+                <input type="text" id="dockerName" placeholder="اسم الحاوية (اختياري)" style="width:100%;">
+                <input type="text" id="dockerPorts" placeholder="المنافذ (80:8080)" style="width:100%;">
+                <button onclick="runDocker()" class="success-btn">🐳 تشغيل حاوية</button>
+                <button onclick="refreshDocker()">🔄 تحديث</button>
+                <h3 style="margin-top:20px;">📦 الحاويات النشطة</h3>
                 <div id="dockerContainers"></div>
             </div>
             <div id="logs" class="tab-content">
+                <h3>📝 سجل النشاطات</h3>
                 <button onclick="refreshLogs()">🔄 تحديث</button>
-                <button onclick="clearLogs()" class="danger-btn">🗑️ مسح</button>
-                <pre id="logViewer" style="background:#0a0e27; padding:15px; border-radius:10px; max-height:400px; overflow-y:auto; color:#00ffcc;"></pre>
+                <button onclick="clearLogs()" class="danger-btn">🗑️ مسح السجلات</button>
+                <input type="text" id="logFilter" placeholder="تصفية السجلات..." style="width:100%; margin-top:10px;" onkeyup="filterLogs()">
+                <pre id="logViewer" style="background:#0a0e27; padding:15px; border-radius:10px; max-height:400px; overflow-y:auto; font-size:0.8em; color:#00ffcc; margin-top:10px;"></pre>
             </div>
             <div id="masterSettings" class="tab-content">
-                <h3>👑 تغيير اسم المستخدم</h3>
-                <input type="text" id="newMasterUsername">
-                <button onclick="changeMasterUsername()">💾 حفظ</button>
-                <h3>🔐 تغيير كلمة المرور</h3>
-                <input type="password" id="currentPassword" placeholder="الحالية">
-                <input type="password" id="newMasterPassword" placeholder="الجديدة">
-                <button onclick="changeMasterPassword()">🔒 تغيير</button>
-                <h3>🌐 تغيير المنفذ</h3>
-                <input type="number" id="newPort" value="3066">
-                <button onclick="changePort()">🔄 تغيير</button>
-                <h3>🔄 إعادة التشغيل</h3>
-                <button onclick="restartPanel()" class="danger-btn">🔄 إعادة تشغيل</button>
+                <div style="display:grid; gap:20px;">
+                    <div style="background:rgba(0,0,0,0.4); border:1px solid #ff66cc55; border-radius:12px; padding:20px;">
+                        <h3 style="color:#ff66cc;">👑 تغيير اسم المستخدم الرئيسي</h3>
+                        <input type="text" id="newMasterUsername" placeholder="اسم المستخدم الجديد" style="width:100%;">
+                        <button onclick="changeMasterUsername()" class="master-btn">💾 حفظ التغيير</button>
+                        <p style="color:#ffcc00; font-size:0.8em; margin-top:10px;">⚠️ سيتم تسجيل الخروج بعد التغيير</p>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.4); border:1px solid #ff66cc55; border-radius:12px; padding:20px;">
+                        <h3 style="color:#ff66cc;">🔐 تغيير كلمة المرور</h3>
+                        <input type="password" id="currentPassword" placeholder="كلمة المرور الحالية" style="width:100%;">
+                        <input type="password" id="newMasterPassword" placeholder="كلمة المرور الجديدة" style="width:100%;">
+                        <input type="password" id="confirmMasterPassword" placeholder="تأكيد كلمة المرور" style="width:100%;">
+                        <button onclick="changeMasterPassword()" class="master-btn">🔒 تغيير كلمة المرور</button>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.4); border:1px solid #ff66cc55; border-radius:12px; padding:20px;">
+                        <h3 style="color:#ff66cc;">🌐 تغيير منفذ التشغيل</h3>
+                        <input type="number" id="newPort" placeholder="المنفذ الجديد" value="3066" style="width:100%;">
+                        <button onclick="changePort()" class="master-btn">🔄 تغيير المنفذ</button>
+                        <p style="color:#ffcc00; font-size:0.8em; margin-top:10px;">⚠️ سيتم إعادة تشغيل السيرفر بعد التغيير</p>
+                    </div>
+                    <div style="background:rgba(0,0,0,0.4); border:1px solid #ff66cc55; border-radius:12px; padding:20px;">
+                        <h3 style="color:#ff66cc;">🔄 إعادة تشغيل اللوحة</h3>
+                        <button onclick="restartPanel()" class="danger-btn">🔄 إعادة تشغيل اللوحة</button>
+                        <p style="color:#ffcc00; font-size:0.8em; margin-top:10px;">⚠️ سيتم إعادة تشغيل السيرفر، جميع العمليات ستتوقف</p>
+                    </div>
+                </div>
             </div>
-    ''' if is_master else ''
+    """ if is_master else ""
 
     return '''
 <!DOCTYPE html>
@@ -475,6 +603,7 @@ def get_html_template(is_master):
         .success-btn { background: #28a745; color: white; border: none; }
         .danger-btn { background: #dc3545; color: white; border: none; }
         .console-btn { background: #6f42c1; color: white; border: none; }
+        .master-btn { background: linear-gradient(45deg, #ff66cc, #ff3399); color: white; border: none; }
         input, textarea { background: #0a0e27; border: 1px solid #00ffcc55; color: #00ffcc; padding: 10px; border-radius: 8px; }
         .terminal { background: #000; color: #00ff00; font-family: monospace; padding: 15px; height: 350px; overflow-y: auto; border-radius: 10px; }
         .file-list { list-style: none; }
@@ -608,6 +737,7 @@ def get_html_template(is_master):
         let runningFileProcesses = {};
         let currentConsole = null;
         let consoleInterval = null;
+        let originalLogs = '';
         
         (function() {
             const modal = document.getElementById('welcomeModal');
@@ -621,6 +751,22 @@ def get_html_template(is_master):
         window.onclick = e => { if(!e.target.matches('.menu-btn') && !e.target.closest('.sidebar')) document.querySelectorAll('.sidebar').forEach(s => s.classList.remove('active')); };
         function goBack() { if(currentPath !== '{{ user_path }}') { let p = currentPath.substring(0, currentPath.lastIndexOf('/')); if(!p || p === '/home/container/users_data') p = '{{ user_path }}'; currentPath = p; refreshFiles(); } }
         function showTab(id) { document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active')); document.getElementById(id).classList.add('active'); if(id==='files') refreshFiles(); if(id==='processes') refreshProcesses(); if(id==='info') refreshSysInfo(); if(id==='users') refreshUsers(); if(id==='schedules') refreshSchedules(); if(id==='backups') refreshBackups(); if(id==='packages') refreshPackages(); if(id==='docker') refreshDocker(); if(id==='logs') refreshLogs(); }
+        
+        async function syncRunningFiles() {
+            try {
+                const r = await fetch('/api/file/running');
+                const d = await r.json();
+                if(d.success) {
+                    runningFileProcesses = {};
+                    d.running.forEach(item => {
+                        runningFileProcesses[item.filename] = item.process_id;
+                    });
+                    if(document.getElementById('files').classList.contains('active')) {
+                        refreshFiles();
+                    }
+                }
+            } catch(e) {}
+        }
         
         function openConsole(fn, pid) { currentConsole = {fn, pid}; document.getElementById('consoleFilename').innerText = fn; document.getElementById('consoleModal').classList.add('active'); if(consoleInterval) clearInterval(consoleInterval); consoleInterval = setInterval(refreshConsoleOutput, 1000); refreshConsoleOutput(); }
         function closeConsole() { document.getElementById('consoleModal').classList.remove('active'); clearInterval(consoleInterval); }
@@ -657,7 +803,7 @@ def get_html_template(is_master):
             h += '</ul>'; document.getElementById('fileBrowser').innerHTML = h;
         }
         function enterFolder(n) { currentPath += '/' + n; refreshFiles(); }
-        async function runFile(n) { const r = await fetch('/api/file/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({filename:n, path:currentPath})}); const d = await r.json(); if(d.success) { runningFileProcesses[n] = d.process_id; refreshFiles(); let msg = '✅ ' + n; if(d.installed_result?.installed?.length) msg += '\\n📦 ' + d.installed_result.installed.join(', '); alert(msg); } else alert('❌ ' + d.error); }
+        async function runFile(n) { const r = await fetch('/api/file/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({filename:n, path:currentPath})}); const d = await r.json(); if(d.success) { runningFileProcesses[n] = d.process_id; refreshFiles(); let msg = '✅ ' + n; if(d.installed_result?.installed?.length) msg += '\\n📦 ' + d.installed_result.installed.join(', '); if(d.installed_result?.failed?.length) msg += '\\n❌ ' + d.installed_result.failed.join(', '); alert(msg); } else alert('❌ ' + d.error); }
         async function stopFile(n) { await fetch('/api/file/stop', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({process_id:runningFileProcesses[n]})}); delete runningFileProcesses[n]; refreshFiles(); }
         async function uploadFiles() { const fs = document.getElementById('uploadFile').files; for(let f of fs) { const fd = new FormData(); fd.append('file', f); fd.append('path', currentPath); await fetch('/api/files/upload', {method:'POST', body:fd}); } refreshFiles(); alert('✅ تم الرفع'); }
         async function createFolder() { const n = prompt('اسم المجلد'); if(n) { await fetch('/api/files/folder', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({path:currentPath, name:n})}); refreshFiles(); } }
@@ -681,7 +827,7 @@ def get_html_template(is_master):
         async function runQuickAction(a) { await fetch('/api/system/action', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({action:a})}); }
         
         async function refreshUsers() { const r = await fetch('/api/users/list'); const d = await r.json(); let h = ''; d.users.forEach(u => h += `<p>👤 ${u.username} ${u.username!='{{ session.username }}'?'<button onclick="deleteUser(\\''+u.username+'\\')">🗑️</button>':''}</p>`); document.getElementById('userList').innerHTML = h; }
-        async function addUser() { const u = document.getElementById('newUsername').value, p = document.getElementById('newPassword').value; await fetch('/api/users/add', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u, password:p})}); refreshUsers(); }
+        async function addUser() { const u = document.getElementById('newUsername').value, p = document.getElementById('newPassword').value, m = document.getElementById('maxSessions').value, e = document.getElementById('expiryDate').value; if(!u||!p) return; await fetch('/api/users/add', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u, password:p, max_sessions:m, expiry:e})}); refreshUsers(); }
         async function deleteUser(u) { await fetch('/api/users/delete', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({username:u})}); refreshUsers(); }
         
         async function refreshSchedules() { const r = await fetch('/api/schedules/list'); const d = await r.json(); document.getElementById('scheduleList').innerHTML = d.schedules.map(s => `<p>${s.name} - ${s.command}</p>`).join(''); }
@@ -694,27 +840,27 @@ def get_html_template(is_master):
         async function installPip() { const p = document.getElementById('pipPackage').value; if(!p) return; await fetch('/api/packages/install/pip', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({package:p})}); refreshPackages(); }
         
         async function refreshDocker() { const r = await fetch('/api/docker/list'); const d = await r.json(); document.getElementById('dockerContainers').innerHTML = d.containers.map(c => `<p>${c.name} (${c.status})</p>`).join(''); }
-        async function runDocker() { const i = document.getElementById('dockerImage').value, n = document.getElementById('dockerName').value; if(!i) return; await fetch('/api/docker/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({image:i, name:n})}); refreshDocker(); }
+        async function runDocker() { const i = document.getElementById('dockerImage').value, n = document.getElementById('dockerName').value, p = document.getElementById('dockerPorts').value; if(!i) return; await fetch('/api/docker/run', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({image:i, name:n, ports:p})}); refreshDocker(); }
         
-        async function refreshLogs() { const r = await fetch('/api/logs'); document.getElementById('logViewer').innerText = (await r.json()).logs || 'لا توجد'; }
+        async function refreshLogs() { const r = await fetch('/api/logs'); const d = await r.json(); originalLogs = d.logs || ''; document.getElementById('logViewer').innerText = originalLogs; }
         async function clearLogs() { if(confirm('مسح السجلات؟')) await fetch('/api/logs/clear', {method:'POST'}); refreshLogs(); }
+        function filterLogs() { const f = document.getElementById('logFilter').value.toLowerCase(); const lines = originalLogs.split('\\n'); document.getElementById('logViewer').innerText = lines.filter(l => l.toLowerCase().includes(f)).join('\\n'); }
         
         async function changeMasterUsername() { const u = document.getElementById('newMasterUsername').value; if(!u) return; await fetch('/api/master/change-username', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({new_username:u})}); alert('تم'); }
-        async function changeMasterPassword() { const c = document.getElementById('currentPassword').value, n = document.getElementById('newMasterPassword').value; if(!c||!n) return; await fetch('/api/master/change-password', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({current_password:c, new_password:n})}); alert('تم'); }
+        async function changeMasterPassword() { const c = document.getElementById('currentPassword').value, n = document.getElementById('newMasterPassword').value, cf = document.getElementById('confirmMasterPassword').value; if(!c||!n||n!==cf) return alert('تأكد من البيانات'); await fetch('/api/master/change-password', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({current_password:c, new_password:n})}); alert('تم'); }
         async function changePort() { const p = document.getElementById('newPort').value; if(!p||!confirm(`تغيير المنفذ إلى ${p}؟`)) return; await fetch('/api/master/change-port', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({port:parseInt(p)})}); }
         async function restartPanel() { if(confirm('إعادة تشغيل؟')) { await fetch('/api/master/restart', {method:'POST'}); setTimeout(() => location.reload(), 3000); } }
         
         setInterval(updateStats, 3000);
         setInterval(() => { if(document.getElementById('processes').classList.contains('active')) refreshProcesses(); }, 5000);
-        updateStats(); refreshFiles();
+        setInterval(syncRunningFiles, 5000);
+        updateStats(); 
+        syncRunningFiles().then(() => refreshFiles());
     </script>
 </body>
 </html>
 '''
 
-# ============================================================
-# قالب تسجيل الدخول
-# ============================================================
 LOGIN_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
@@ -747,9 +893,6 @@ LOGIN_TEMPLATE = '''
 </html>
 '''
 
-# ============================================================
-# Routes
-# ============================================================
 @app.route('/')
 @login_required
 def index():
@@ -798,7 +941,13 @@ def get_profile():
                 fp = os.path.join(r, fl)
                 if os.path.exists(fp):
                     size += os.path.getsize(fp)
-    return jsonify({'created': datetime.now().isoformat(), 'expiry': '∞', 'disk_usage_gb': size/(1024**3)})
+    users = load_users()
+    user_data = users.get(u, {})
+    return jsonify({
+        'created': user_data.get('created', datetime.now().isoformat()) if isinstance(user_data, dict) else datetime.now().isoformat(),
+        'expiry': user_data.get('expiry', '∞') if isinstance(user_data, dict) else '∞',
+        'disk_usage_gb': size/(1024**3)
+    })
 
 @app.route('/api/system')
 @login_required
@@ -815,6 +964,7 @@ def sysinfo():
 def system_action():
     a = request.json.get('action')
     if a == 'clean': gc.collect()
+    if a == 'update': subprocess.run(['apt-get', 'update'], capture_output=True, timeout=120)
     return jsonify({'success': True})
 
 @app.route('/api/files')
@@ -918,6 +1068,20 @@ def send_file_input():
         file_processes[d['process_id']]['process'].stdin.flush()
     return jsonify({'success': True})
 
+@app.route('/api/file/running')
+@login_required
+def get_running_files():
+    username = session['username']
+    running = []
+    for pid, info in file_processes.items():
+        if info['username'] == username or username == MASTER_USERNAME:
+            is_running = info['process'].poll() is None
+            if is_running:
+                running.append({'process_id': pid, 'filename': info['filename']})
+            else:
+                del file_processes[pid]
+    return jsonify({'success': True, 'running': running})
+
 @app.route('/api/exec', methods=['POST'])
 @login_required
 def execute_command():
@@ -982,14 +1146,20 @@ def scan_ports():
 @master_required
 def list_users():
     users = load_users()
-    return jsonify({'users': [{'username': u, 'max_sessions': 999, 'active_sessions': 0} for u in users]})
+    sessions = load_user_sessions()
+    return jsonify({'users': [{'username': u, 'max_sessions': users[u].get('max_sessions', 999) if isinstance(users[u], dict) else 999, 'active_sessions': sessions.get(u, 0)} for u in users]})
 
 @app.route('/api/users/add', methods=['POST'])
 @master_required
 def add_user():
     d = request.json
     users = load_users()
-    users[d['username']] = {'password': hashlib.sha256(d['password'].encode()).hexdigest()}
+    users[d['username']] = {
+        'password': hashlib.sha256(d['password'].encode()).hexdigest(),
+        'max_sessions': int(d.get('max_sessions', 999)),
+        'created': datetime.now().isoformat(),
+        'expiry': d.get('expiry')
+    }
     save_users(users)
     os.makedirs(os.path.join(USERS_FOLDER, d['username']), exist_ok=True)
     return jsonify({'success': True})
@@ -1016,7 +1186,7 @@ def add_schedule():
     d = request.json
     sch = load_schedules()
     sid = str(uuid.uuid4())[:8]
-    sch[sid] = {'id': sid, 'name': d['name'], 'command': d['command'], 'schedule': d.get('schedule')}
+    sch[sid] = {'id': sid, 'name': d['name'], 'command': d['command'], 'schedule': d.get('schedule', '* * * * *')}
     save_schedules(sch)
     return jsonify({'success': True})
 
@@ -1074,6 +1244,9 @@ def run_docker():
     d = request.json
     cmd = ['docker', 'run', '-d']
     if d.get('name'): cmd.extend(['--name', d['name']])
+    if d.get('ports'):
+        for p in d['ports'].split(','):
+            cmd.extend(['-p', p.strip()])
     cmd.append(d['image'])
     subprocess.run(cmd, capture_output=True)
     return jsonify({'success': True})
@@ -1129,5 +1302,15 @@ def restart_panel():
     return jsonify({'success': True})
 
 if __name__ == '__main__':
-    print("🔥 VeNoM UNLIMITED VPS - READY 🔥")
-    app.run(host='0.0.0.0', port=MASTER_CONFIG.get('port', 3220), debug=False, threaded=True)
+    print("""
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║     🔥 VeNoM - UNLIMITED VPS CONTROL PANEL 🔥                ║
+║                                                              ║
+║     Port: 3066                                               ║
+║     Master: VeNoM / VeNoM                                    ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+    """)
+    port = MASTER_CONFIG.get('port', 3066)
+    app.run(host='0.0.0.0', port=port, debug=False, threaded=True)
